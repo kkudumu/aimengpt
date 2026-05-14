@@ -1,11 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+import { prepareDocumentsForChroma } from '@/utils/server/rag-ingest';
+
 import { ChromaClient, TransformersEmbeddingFunction } from 'chromadb';
 import { IncomingForm } from 'formidable';
 import { PDFLoader } from 'langchain/document_loaders/fs/pdf';
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-
-import path from 'path';
+import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import { v4 as uuidv4 } from 'uuid';
 
 export const config = {
@@ -29,26 +29,34 @@ export default async function handler(
         return res.status(400).json({ error: 'Failed to upload file' });
       }
 
+      const pdfFiles = Array.isArray(files.pdf)
+        ? files.pdf
+        : [files.pdf].filter(Boolean);
+
+      if (!pdfFiles.length) {
+        return res.status(400).json({ error: 'Missing PDF file upload' });
+      }
+
       const client = new ChromaClient({
         path: process.env.CHROMA_PATH || 'http://chroma-server:8000',
       });
 
-      const loader = new PDFLoader(files.pdf[0].filepath);
+      const loader = new PDFLoader(pdfFiles[0].filepath);
 
       const originalDocs = await loader.load();
-
-      console.log(JSON.stringify(originalDocs));
-
 
       const splitter = new RecursiveCharacterTextSplitter({
         chunkSize: 500,
         chunkOverlap: 100,
-      });      
+      });
 
       const docs = await splitter.splitDocuments(originalDocs);
- 
+
       // Process the documents and perform other logic
-      const { ids, metadatas, documentContents } = processDocuments(docs);
+      const { ids, metadatas, documentContents } = prepareDocumentsForChroma(
+        docs,
+        uuidv4,
+      );
 
       const embedder = new TransformersEmbeddingFunction();
       const collection = await client.getOrCreateCollection({
@@ -73,34 +81,4 @@ export default async function handler(
       .status(500)
       .json({ message: 'An error occurred while processing the documents' });
   }
-}
-
-function processDocuments(docs: any) {
-  const ids = [];
-  const metadatas = [];
-  const documentContents = [];
-
-  for (const document of docs) {
-    // Generate an ID for each document, or use some existing unique identifier
-    const id = uuidv4();
-    ids.push(id);
-
-    const fallbackTitle = path.basename(document.metadata.source);
-    const titleFromMetadata = document.metadata.pdf.info.Title;
-
-    const title = titleFromMetadata && titleFromMetadata.length > 0 ? titleFromMetadata : fallbackTitle;
-
-  
-    const metadata = {
-      title: title,
-      page: document.metadata.loc.pageNumber, // Define this function to extract chapter info
-      source: document.metadata.source, // Define this function to extract verse info
-    };
-    metadatas.push(metadata);
-
-    // Add the page content to the documents array
-    documentContents.push(document.pageContent);
-  }
-
-  return { ids, metadatas, documentContents };
 }
