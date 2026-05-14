@@ -58,6 +58,12 @@ export default async function handler(
         uuidv4,
       );
 
+      if (!documentContents.length) {
+        return res
+          .status(400)
+          .json({ error: 'PDF did not contain ingestible text' });
+      }
+
       const embedder = new TransformersEmbeddingFunction();
       const collection = await client.getOrCreateCollection({
         name: 'default-collection',

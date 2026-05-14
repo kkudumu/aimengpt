@@ -87,4 +87,17 @@ describe('RAG document ingestion helpers', () => {
       documentContents: ['First chunk', 'Second chunk'],
     });
   });
+
+  it('returns an empty prepared payload when every chunk is blank', () => {
+    const prepared = prepareDocumentsForChroma(
+      [{ pageContent: '  ' }, { pageContent: '\n\n' }],
+      () => 'unused',
+    );
+
+    expect(prepared).toEqual({
+      ids: [],
+      metadatas: [],
+      documentContents: [],
+    });
+  });
 });
