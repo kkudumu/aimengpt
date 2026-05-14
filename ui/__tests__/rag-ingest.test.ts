@@ -1,6 +1,9 @@
 import {
   buildDocumentMetadata,
+  buildSourceHash,
+  getFirstDoi,
   getPdfTitle,
+  getPublicationYear,
   getSourceName,
   prepareDocumentsForChroma,
 } from '@/utils/server/rag-ingest';
@@ -25,6 +28,9 @@ describe('RAG document ingestion helpers', () => {
       source: '/tmp/fallback.pdf',
       chunk: 2,
       contentLength: 13,
+      sourceHash: buildSourceHash(document),
+      doi: '',
+      publicationYear: 0,
     });
   });
 
@@ -51,7 +57,37 @@ describe('RAG document ingestion helpers', () => {
       source: 'uploaded-document',
       chunk: 0,
       contentLength: 13,
+      sourceHash: buildSourceHash({ pageContent: 'Abstract text' }),
+      doi: '',
+      publicationYear: 0,
     });
+  });
+
+  it('extracts citation metadata and stable source hashes for retrieval', () => {
+    const document = {
+      pageContent:
+        'Rivera et al. 2025 reported supporting evidence in DOI 10.1016/j.watres.2025.120001.',
+      metadata: {
+        source: '/uploads/flood-study.pdf',
+        loc: { pageNumber: 12 },
+      },
+    };
+    const metadata = buildDocumentMetadata(document, 4);
+
+    expect(getFirstDoi(`${document.pageContent}.`)).toBe(
+      '10.1016/j.watres.2025.120001',
+    );
+    expect(getPublicationYear(document.pageContent)).toBe(2025);
+    expect(metadata).toMatchObject({
+      title: 'flood-study.pdf',
+      page: 12,
+      source: '/uploads/flood-study.pdf',
+      chunk: 4,
+      doi: '10.1016/j.watres.2025.120001',
+      publicationYear: 2025,
+    });
+    expect(metadata.sourceHash).toHaveLength(16);
+    expect(metadata.sourceHash).toBe(buildSourceHash(document));
   });
 
   it('skips blank chunks and assigns dense chunk indices', () => {
@@ -75,6 +111,12 @@ describe('RAG document ingestion helpers', () => {
           source: 'first.pdf',
           chunk: 0,
           contentLength: 11,
+          sourceHash: buildSourceHash({
+            pageContent: 'First chunk',
+            metadata: { source: 'first.pdf' },
+          }),
+          doi: '',
+          publicationYear: 0,
         },
         {
           title: 'second.pdf',
@@ -82,6 +124,12 @@ describe('RAG document ingestion helpers', () => {
           source: 'second.pdf',
           chunk: 1,
           contentLength: 12,
+          sourceHash: buildSourceHash({
+            pageContent: 'Second chunk',
+            metadata: { source: 'second.pdf' },
+          }),
+          doi: '',
+          publicationYear: 0,
         },
       ],
       documentContents: ['First chunk', 'Second chunk'],

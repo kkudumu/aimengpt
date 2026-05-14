@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import path from 'path';
 
 export interface RagLoadedDocument {
@@ -22,6 +23,9 @@ export interface RagDocumentMetadata {
   source: string;
   chunk: number;
   contentLength: number;
+  sourceHash: string;
+  doi: string;
+  publicationYear: number;
 }
 
 export interface PreparedRagDocuments {
@@ -47,11 +51,35 @@ export function getSourceName(document: RagLoadedDocument): string {
   return path.basename(source) || 'uploaded-document';
 }
 
+export function getFirstDoi(text: string): string | undefined {
+  const match = text.match(/10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i);
+
+  return match?.[0].replace(/[.,;:]+$/g, '');
+}
+
+export function getPublicationYear(text: string): number | undefined {
+  const match = text.match(/\b(19|20)\d{2}\b/);
+
+  return match ? Number(match[0]) : undefined;
+}
+
+export function buildSourceHash(document: RagLoadedDocument): string {
+  const source = document.metadata?.source ?? 'uploaded-document';
+  const page = document.metadata?.loc?.pageNumber ?? 0;
+
+  return createHash('sha256')
+    .update(`${source}:${page}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
 export function buildDocumentMetadata(
   document: RagLoadedDocument,
   chunk: number,
 ): RagDocumentMetadata {
   const content = document.pageContent ?? '';
+  const doi = getFirstDoi(content);
+  const publicationYear = getPublicationYear(content);
 
   return {
     title: getPdfTitle(document) ?? getSourceName(document),
@@ -59,6 +87,9 @@ export function buildDocumentMetadata(
     source: document.metadata?.source ?? 'uploaded-document',
     chunk,
     contentLength: content.length,
+    sourceHash: buildSourceHash(document),
+    doi: doi ?? '',
+    publicationYear: publicationYear ?? 0,
   };
 }
 
